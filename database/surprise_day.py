@@ -36,6 +36,15 @@ class SurpriseDay:
         database.commit()
         self.channel = channel
     
+    def get_from_channel(database: Connection, channel: str) -> SurpriseDay | None:
+        cur = database.cursor()
+        res = cur.execute("""SELECT id, discord, channel, surprise_day, reset_day FROM surprise_days WHERE "channel"=?;""", [channel])
+        res = res.fetchone()
+        if res == None:
+            return None
+        id, discord, channel, surprise_day, reset_day = res
+        return SurpriseDay(id, discord, channel, datetime.fromtimestamp(surprise_day), datetime.fromtimestamp(reset_day))
+
     def get_from_discord(database: Connection, discord: str) -> SurpriseDay | None:
         cur = database.cursor()
         res = cur.execute("""SELECT id, discord, channel, surprise_day, reset_day FROM surprise_days WHERE "discord"=?;""", [discord])
