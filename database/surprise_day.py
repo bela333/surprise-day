@@ -21,7 +21,7 @@ def random_surprise_day(now):
 
 
 class SurpriseDay:
-    def __init__(self, id: int, discord: str, channel: str, surprise_day: datetime, reset_day: datetime) -> None:
+    def __init__(self, id: int, discord: str, channel: str | None, surprise_day: datetime, reset_day: datetime) -> None:
         self.id = id
         self.discord = discord
         self.channel = channel
@@ -37,11 +37,12 @@ class SurpriseDay:
         self.id = res.lastrowid
         database.commit()
 
-    def update_channel(self, database: Connection, channel: str):
+    def update_channel(self, database: Connection, channel: str | None):
         database.execute("UPDATE surprise_days SET channel = ? WHERE id = ?", (channel, self.id))
         database.commit()
         self.channel = channel
 
+    @staticmethod
     def get_from_channel(database: Connection, channel: str) -> SurpriseDay | None:
         cur = database.cursor()
         res = cur.execute(
@@ -55,6 +56,7 @@ class SurpriseDay:
             id, discord, channel, datetime.fromtimestamp(surprise_day), datetime.fromtimestamp(reset_day)
         )
 
+    @staticmethod
     def get_from_discord(database: Connection, discord: str) -> SurpriseDay | None:
         cur = database.cursor()
         res = cur.execute(
@@ -68,6 +70,7 @@ class SurpriseDay:
             id, discord, channel, datetime.fromtimestamp(surprise_day), datetime.fromtimestamp(reset_day)
         )
 
+    @staticmethod
     def get_from_discord_or_default(database: Connection, discord: str) -> SurpriseDay:
         res = SurpriseDay.get_from_discord(database, discord)
         if res is not None:
@@ -84,6 +87,7 @@ class SurpriseDay:
     def __repr__(self) -> str:
         return "{} {} {} {}".format(self.id, self.discord, self.surprise_day, self.reset_day)
 
+    @staticmethod
     def setup(database: Connection) -> None:
         database.execute(
             """CREATE TABLE IF NOT EXISTS "surprise_days" (
