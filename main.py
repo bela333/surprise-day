@@ -1,7 +1,9 @@
+from datetime import datetime
 from dotenv import load_dotenv
 import hikari
 import os
 import sqlite3
+import aiocron
 
 from database.surprise_day import SurpriseDay
 
@@ -37,6 +39,28 @@ bot = hikari.GatewayBot(token=TOKEN, intents=hikari.Intents.GUILD_MEMBERS)
 setup()
 
 
+#@aiocron.crontab("* * * * *", start=False)  # Every minute (for debugging)
+@aiocron.crontab("0 0 * * *", start=False) # Every day
+async def reset_surpriseday():
+    for day in SurpriseDay.get_expired(database, datetime.now()):
+        if day.channel is None:
+            continue
+        surprise_day, reset_day = SurpriseDay.generate_surpriseday_and_resetday()
+        day.update_surprise_day(database, surprise_day)
+        day.update_reset_day(database, reset_day)
+        msg = await bot.rest.create_message(
+            hikari.Snowflake(day.channel),
+            "<@{0}>'s Surprise Day is on <t:{1}>, <t:{1}:R>".format(day.discord, int(day.surprise_day.timestamp())),
+        )
+        await bot.rest.pin_message(msg.channel_id, msg)
+        if day.message is not None:
+            try:
+                await bot.rest.delete_message(hikari.Snowflake(day.channel), hikari.Snowflake(day.message))
+            except Exception:
+                pass
+        day.update_message(database, str(msg.id))
+
+
 @bot.listen()
 async def register_commands(event: hikari.StartingEvent) -> None:
     application = await bot.rest.fetch_application()
@@ -56,6 +80,7 @@ async def register_commands(event: hikari.StartingEvent) -> None:
         commands.extend(debug_commands)
 
     await bot.rest.set_application_commands(application=application.id, commands=commands, guild=GUILD)
+    reset_surpriseday.start()
 
 
 @bot.listen()
@@ -154,7 +179,7 @@ async def handle_join(member: hikari.Member, guild: hikari.SnowflakeishOr[hikari
         # TODO: Cleanup channel
         pass
     channel = await bot.rest.create_guild_text_channel(guild, member.username, category=CATEGORY)
-
+    
     await channel.edit_overwrite(
         guild, deny=hikari.Permissions.VIEW_CHANNEL, target_type=hikari.PermissionOverwriteType.ROLE
     )
@@ -163,6 +188,7 @@ async def handle_join(member: hikari.Member, guild: hikari.SnowflakeishOr[hikari
     msg = await channel.send(
         "<@{0}>'s Surprise Day is on <t:{1}>, <t:{1}:R>".format(member.id, int(day.surprise_day.timestamp()))
     )
+    day.update_message(database, str(msg.id))
     await channel.pin_message(msg.id)
 
 
@@ -173,6 +199,7 @@ async def handle_leave(user_id: hikari.Snowflake, guild: hikari.SnowflakeishOr[h
         return
     await bot.rest.delete_channel(hikari.Snowflake(day.channel))
     day.update_channel(database, None)
+    day.update_message(database, None)
 
 
 @bot.listen()
