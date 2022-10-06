@@ -109,67 +109,67 @@ async def handle_interactions(event: hikari.InteractionCreateEvent) -> None:
                 hikari.ResponseType.MESSAGE_CREATE, "Good!", flags=hikari.MessageFlag.EPHEMERAL
             )
             await handle_leave(event.interaction.member.id, event.interaction.guild_id)
-        if event.interaction.command_name == "join":
-            if (
-                event.interaction.options is None
-                or len(event.interaction.options) < 1
-                or event.interaction.member is None
-            ):
+    if event.interaction.command_name == "join":
+        if (
+            event.interaction.options is None
+            or len(event.interaction.options) < 1
+            or event.interaction.member is None
+        ):
+            await event.interaction.create_initial_response(
+                hikari.ResponseType.MESSAGE_CREATE, "Oops!", flags=hikari.MessageFlag.EPHEMERAL
+            )
+            return
+        userid = event.interaction.options[0].value
+        if userid != event.interaction.member.id:
+            day = SurpriseDay.get_from_discord(database, str(userid))
+            if day is None or day.channel is None:
                 await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE, "Oops!", flags=hikari.MessageFlag.EPHEMERAL
+                    hikari.ResponseType.MESSAGE_CREATE, "Unknown error", flags=hikari.MessageFlag.EPHEMERAL
                 )
                 return
-            userid = event.interaction.options[0].value
-            if userid != event.interaction.member.id:
-                day = SurpriseDay.get_from_discord(database, str(userid))
-                if day is None or day.channel is None:
-                    await event.interaction.create_initial_response(
-                        hikari.ResponseType.MESSAGE_CREATE, "Unknown error", flags=hikari.MessageFlag.EPHEMERAL
-                    )
-                    return
-                channel = await bot.rest.fetch_channel(hikari.Snowflake(day.channel))
-                if channel is None or not isinstance(channel, hikari.GuildTextChannel):
-                    await event.interaction.create_initial_response(
-                        hikari.ResponseType.MESSAGE_CREATE, "Oops", flags=hikari.MessageFlag.EPHEMERAL
-                    )
-                    return
-                await channel.edit_overwrite(
-                    event.interaction.member.id,
-                    target_type=hikari.PermissionOverwriteType.MEMBER,
-                    allow=hikari.Permissions.VIEW_CHANNEL,
-                )
-                await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE, "Joined!!", flags=hikari.MessageFlag.EPHEMERAL
-                )
-            else:
-                await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE, "You can't choose yourself", flags=hikari.MessageFlag.EPHEMERAL
-                )
-        if event.interaction.command_name == "leave":
-            if event.interaction.member is None:
-                await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE, "Oops", flags=hikari.MessageFlag.EPHEMERAL
-                )
-                return
-            day = SurpriseDay.get_from_channel(database, str(event.interaction.channel_id))
-            if day is None:
-                await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE,
-                    "You are not in a celebratory channel",
-                    flags=hikari.MessageFlag.EPHEMERAL,
-                )
-                return
-            assert day.channel is not None
             channel = await bot.rest.fetch_channel(hikari.Snowflake(day.channel))
             if channel is None or not isinstance(channel, hikari.GuildTextChannel):
                 await event.interaction.create_initial_response(
                     hikari.ResponseType.MESSAGE_CREATE, "Oops", flags=hikari.MessageFlag.EPHEMERAL
                 )
                 return
-            await channel.remove_overwrite(event.interaction.member.id)
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE, "Successfully left", flags=hikari.MessageFlag.EPHEMERAL
+            await channel.edit_overwrite(
+                event.interaction.member.id,
+                target_type=hikari.PermissionOverwriteType.MEMBER,
+                allow=hikari.Permissions.VIEW_CHANNEL,
             )
+            await event.interaction.create_initial_response(
+                hikari.ResponseType.MESSAGE_CREATE, "Joined!!", flags=hikari.MessageFlag.EPHEMERAL
+            )
+        else:
+            await event.interaction.create_initial_response(
+                hikari.ResponseType.MESSAGE_CREATE, "You can't choose yourself", flags=hikari.MessageFlag.EPHEMERAL
+            )
+    if event.interaction.command_name == "leave":
+        if event.interaction.member is None:
+            await event.interaction.create_initial_response(
+                hikari.ResponseType.MESSAGE_CREATE, "Oops", flags=hikari.MessageFlag.EPHEMERAL
+            )
+            return
+        day = SurpriseDay.get_from_channel(database, str(event.interaction.channel_id))
+        if day is None:
+            await event.interaction.create_initial_response(
+                hikari.ResponseType.MESSAGE_CREATE,
+                "You are not in a celebratory channel",
+                flags=hikari.MessageFlag.EPHEMERAL,
+            )
+            return
+        assert day.channel is not None
+        channel = await bot.rest.fetch_channel(hikari.Snowflake(day.channel))
+        if channel is None or not isinstance(channel, hikari.GuildTextChannel):
+            await event.interaction.create_initial_response(
+                hikari.ResponseType.MESSAGE_CREATE, "Oops", flags=hikari.MessageFlag.EPHEMERAL
+            )
+            return
+        await channel.remove_overwrite(event.interaction.member.id)
+        await event.interaction.create_initial_response(
+            hikari.ResponseType.MESSAGE_CREATE, "Successfully left", flags=hikari.MessageFlag.EPHEMERAL
+        )
 
 
 async def handle_join(member: hikari.Member, guild: hikari.SnowflakeishOr[hikari.PartialGuild]) -> None:
