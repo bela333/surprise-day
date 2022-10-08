@@ -19,4 +19,4 @@ def register_command(database: aiosqlite.core.Connection, bot: lightbulb.BotApp)
             return
         assert day.channel is not None
         await bot.rest.delete_permission_overwrite(hikari.Snowflake(day.channel), ctx.member)
-        await ctx.respond("Sucessfully left channel", flags=hikari.MessageFlag.EPHEMERAL)
+        await ctx.respond("Successfully left channel", flags=hikari.MessageFlag.EPHEMERAL)
