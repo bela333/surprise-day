@@ -1,11 +1,11 @@
-import sqlite3
+import aiosqlite
 import hikari
 import lightbulb
 
 from database.surprise_day import SurpriseDay
 
 
-def register_command(database: sqlite3.Connection, bot: lightbulb.BotApp):
+def register_command(database: aiosqlite.core.Connection, bot: lightbulb.BotApp):
     @bot.command()
     @lightbulb.option("user", "User", hikari.User)
     @lightbulb.command("join", "Join someone else's celebration")
@@ -23,7 +23,7 @@ def register_command(database: sqlite3.Connection, bot: lightbulb.BotApp):
             await ctx.respond("You can't join your own channel", flags=hikari.MessageFlag.EPHEMERAL)
             return
         
-        day = SurpriseDay.get_from_discord(database, str(user))
+        day = await SurpriseDay.get_from_discord(database, str(user))
         if day is None or day.channel is None:
             await ctx.respond("This user does not have a celebratory channel", flags=hikari.MessageFlag.EPHEMERAL)
             return

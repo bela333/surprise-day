@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timedelta
 import random
-from sqlite3 import Connection
+from aiosqlite import Connection
 from typing import List, Optional, Tuple
 
 
@@ -34,57 +34,57 @@ class SurpriseDay:
         self.surprise_day = surprise_day
         self.reset_day = reset_day
 
-    def create(self, database: Connection) -> None:
-        cur = database.cursor()
-        res = cur.execute(
+    async def create(self, database: Connection) -> None:
+        cur = await database.cursor()
+        res = await cur.execute(
             "INSERT INTO surprise_days(discord, message, channel, surprise_day, reset_day) VALUES (?,?,?,?,?)",
             [self.discord, self.message, self.channel, int(self.surprise_day.timestamp()), int(self.reset_day.timestamp())],
         )
         self.id = res.lastrowid
-        database.commit()
+        await database.commit()
 
-    def update_channel(self, database: Connection, channel: Optional[str]):
+    async def update_channel(self, database: Connection, channel: Optional[str]):
         database.execute("UPDATE surprise_days SET channel = ? WHERE id = ?", (channel, self.id))
-        database.commit()
+        await database.commit()
         self.channel = channel
 
-    def update_message(self, database: Connection, message: Optional[str]):
+    async def update_message(self, database: Connection, message: Optional[str]):
         database.execute("UPDATE surprise_days SET message = ? WHERE id = ?", (message, self.id))
-        database.commit()
+        await database.commit()
         self.message = message
 
-    def update_reset_day(self, database: Connection, reset_day: datetime) -> None:
+    async def update_reset_day(self, database: Connection, reset_day: datetime) -> None:
         database.execute("UPDATE surprise_days SET reset_day = ? WHERE id = ?", [int(reset_day.timestamp()), self.id])
-        database.commit()
+        await database.commit()
         self.reset_day = reset_day
 
-    def update_surprise_day(self, database: Connection, surprise_day: datetime) -> None:
+    async def update_surprise_day(self, database: Connection, surprise_day: datetime) -> None:
         database.execute(
             "UPDATE surprise_days SET surprise_day = ? WHERE id = ?", [int(surprise_day.timestamp()), self.id]
         )
-        database.commit()
+        await database.commit()
         self.surprise_day = surprise_day
 
     @staticmethod
-    def get_expired(database: Connection, now: datetime) -> List[SurpriseDay]:
+    async def get_expired(database: Connection, now: datetime) -> List[SurpriseDay]:
         timestamp = int(now.timestamp())
-        cur = database.cursor()
-        res = cur.execute(
+        cur = await database.cursor()
+        res = await cur.execute(
             """SELECT id, discord, message, channel, surprise_day, reset_day FROM surprise_days WHERE reset_day < ?;""",
             [timestamp],
         )
         return [
             SurpriseDay(id, discord, message, channel, datetime.fromtimestamp(surprise_day), datetime.fromtimestamp(reset_day))
-            for (id, discord, message, channel, surprise_day, reset_day) in res.fetchall()
+            for (id, discord, message, channel, surprise_day, reset_day) in await res.fetchall()
         ]
 
     @staticmethod
-    def get_from_channel(database: Connection, channel: str) -> Optional[SurpriseDay]:
-        cur = database.cursor()
-        res = cur.execute(
+    async def get_from_channel(database: Connection, channel: str) -> Optional[SurpriseDay]:
+        cur = await database.cursor()
+        res = await cur.execute(
             """SELECT id, discord, message, channel, surprise_day, reset_day FROM surprise_days WHERE "channel"=?;""", [channel]
         )
-        res = res.fetchone()
+        res = await res.fetchone()
         if res == None:
             return None
         id, discord, message, channel, surprise_day, reset_day = res
@@ -93,12 +93,12 @@ class SurpriseDay:
         )
 
     @staticmethod
-    def get_from_discord(database: Connection, discord: str) -> Optional[SurpriseDay]:
-        cur = database.cursor()
-        res = cur.execute(
+    async def get_from_discord(database: Connection, discord: str) -> Optional[SurpriseDay]:
+        cur = await database.cursor()
+        res = await cur.execute(
             """SELECT id, discord, message, channel, surprise_day, reset_day FROM surprise_days WHERE "discord"=?;""", [discord]
         )
-        res = res.fetchone()
+        res = await res.fetchone()
         if res == None:
             return None
         id, discord, message, channel, surprise_day, reset_day = res
@@ -114,8 +114,8 @@ class SurpriseDay:
         return (surprise_day, reset_day)
 
     @staticmethod
-    def get_from_discord_or_default(database: Connection, discord: str) -> SurpriseDay:
-        res = SurpriseDay.get_from_discord(database, discord)
+    async def get_from_discord_or_default(database: Connection, discord: str) -> SurpriseDay:
+        res = await SurpriseDay.get_from_discord(database, discord)
         if res is not None:
             return res
 
@@ -123,15 +123,15 @@ class SurpriseDay:
 
         res = SurpriseDay(0, discord, None, None, surprise_day, reset_day)
 
-        res.create(database)
+        await res.create(database)
         return res
 
     def __repr__(self) -> str:
         return "{} {} {} {}".format(self.id, self.discord, self.surprise_day, self.reset_day)
 
     @staticmethod
-    def setup(database: Connection) -> None:
-        database.execute(
+    async def setup(database: Connection) -> None:
+        await database.execute(
             """CREATE TABLE IF NOT EXISTS "surprise_days" (
         "id"	INTEGER,
         "discord"	TEXT,
@@ -142,4 +142,4 @@ class SurpriseDay:
         PRIMARY KEY("id" AUTOINCREMENT)
         );"""
         )
-        database.commit()
+        await database.commit()
