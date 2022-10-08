@@ -11,14 +11,25 @@ from models.surprise_day import SurpriseDay
 
 
 class Database:
-    __slots__: t.Sequence[str] = ("_connection",)
+    __slots__: t.Sequence[str] = ("_connection", "_is_closed")
 
     def __init__(self, connection: aiosqlite.Connection) -> None:
         self._connection = connection
+        self._is_closed = False
 
     @property
     def connection(self) -> aiosqlite.Connection:
         return self._connection
+
+    @property
+    def is_closed(self) -> bool:
+        """True if the database connection was closed."""
+        return self._is_closed
+
+    async def close(self) -> None:
+        """Close the database connection."""
+        await self.connection.close()
+        self._is_closed = True
 
     async def create_day(
         self,
@@ -50,6 +61,9 @@ class Database:
         SurpriseDay
             The newly created SurpriseDay.
         """
+        if self.is_closed:
+            raise hikari.ComponentStateConflictError("The database connection is closed.")
+
 
         cur = await self.connection.cursor()
         res = await cur.execute(
@@ -77,6 +91,8 @@ class Database:
         day: SurpriseDay
             The day to update.
         """
+        if self.is_closed:
+            raise hikari.ComponentStateConflictError("The database connection is closed.")
 
         cur = await self.connection.cursor()
         await cur.execute(
@@ -96,6 +112,8 @@ class Database:
         day: SurpriseDay
             The day to delete.
         """
+        if self.is_closed:
+            raise hikari.ComponentStateConflictError("The database connection is closed.")
 
         cur = await self.connection.cursor()
         await cur.execute(
@@ -117,6 +135,8 @@ class Database:
         Sequence[SurpriseDay]
             A list of expired days.
         """
+        if self.is_closed:
+            raise hikari.ComponentStateConflictError("The database connection is closed.")
 
         timestamp = int(date.timestamp())
         cur = await self.connection.cursor()
@@ -141,6 +161,8 @@ class Database:
         Optional[SurpriseDay]
             The day that belongs to the channel, or None if it doesn't exist.
         """
+        if self.is_closed:
+            raise hikari.ComponentStateConflictError("The database connection is closed.")
 
         cur = await self.connection.cursor()
         channel_id = str(hikari.Snowflake(channel))
@@ -162,6 +184,9 @@ class Database:
         Optional[SurpriseDay]
             The day that belongs to the user, or None if it doesn't exist.
         """
+        if self.is_closed:
+            raise hikari.ComponentStateConflictError("The database connection is closed.")
+
         user_id = str(hikari.Snowflake(user))
 
         cur = await self.connection.cursor()
@@ -183,6 +208,9 @@ class Database:
         SurpriseDay
             The day that belongs to the user, created if necessary.
         """
+        if self.is_closed:
+            raise hikari.ComponentStateConflictError("The database connection is closed.")
+
         if day := await self.fetch_day_by_user(user):
             return day
 
@@ -192,6 +220,8 @@ class Database:
 
     async def create_schema(self) -> None:
         """Create the database schema if it doesn't exist already."""
+        if self.is_closed:
+            raise hikari.ComponentStateConflictError("The database connection is closed.")
 
         await self.connection.execute(
             """CREATE TABLE IF NOT EXISTS "surprise_days" (

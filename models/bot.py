@@ -44,6 +44,7 @@ class SurpriseBot(lightbulb.BotApp):
         """Start all listeners located in this class."""
         self.subscribe(hikari.StartingEvent, self.on_starting)
         self.subscribe(hikari.StartedEvent, self.on_started)
+        self.subscribe(hikari.StoppingEvent, self.on_stopping)
         self.subscribe(hikari.MemberCreateEvent, self.on_member_create)
         self.subscribe(hikari.MemberDeleteEvent, self.on_member_delete)
 
@@ -63,6 +64,10 @@ class SurpriseBot(lightbulb.BotApp):
     async def on_started(self, _: hikari.StartedEvent) -> None:
         """Called once when the bot has started up."""
         self.reset_surprisedays.start()
+
+    async def on_stopping(self, _: hikari.StoppingEvent) -> None:
+        """Called once when the bot is shutting down."""
+        await self.db.close()
 
     async def on_member_create(self, event: hikari.MemberCreateEvent) -> None:
         """On new member join, generate a new surprise day channel."""
