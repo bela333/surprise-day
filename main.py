@@ -1,153 +1,41 @@
 from datetime import datetime
-from . import utils
+import utils
 import hikari
+import lightbulb
 import sqlite3
 import aiocron
+from commands import leave, join
 
 from database.surprise_day import SurpriseDay
 
 database = sqlite3.connect("database.db")
 SurpriseDay.setup(database)
 
-bot = hikari.GatewayBot(token=utils.TOKEN, intents=hikari.Intents.GUILD_MEMBERS)
+bot = lightbulb.BotApp(token=utils.TOKEN, intents=hikari.Intents.GUILD_MEMBERS)
 
-# Run reset job every day at midnight
+# Run `reset` job every day at midnight
 @aiocron.crontab("0 0 * * *", start=False)
 async def reset_surpriseday():
     for day in SurpriseDay.get_expired(database, datetime.now()):
         if day.channel is None:
             continue
+
         surprise_day, reset_day = SurpriseDay.generate_surpriseday_and_resetday()
         day.update_surprise_day(database, surprise_day)
         day.update_reset_day(database, reset_day)
+
         msg = await bot.rest.create_message(
             hikari.Snowflake(day.channel),
             "<@{0}>'s Surprise Day is on <t:{1}>, <t:{1}:R>".format(day.discord, int(day.surprise_day.timestamp())),
         )
         await bot.rest.pin_message(msg.channel_id, msg)
+
         if day.message is not None:
             try:
                 await bot.rest.delete_message(hikari.Snowflake(day.channel), hikari.Snowflake(day.message))
             except Exception:
                 pass
         day.update_message(database, str(msg.id))
-
-
-@bot.listen()
-async def register_commands(event: hikari.StartingEvent) -> None:
-
-    # Start reset job
-    reset_surpriseday.start()
-
-    # Register commands
-    # TODO: Use a command manager
-    application = await bot.rest.fetch_application()
-
-    commands = [
-        bot.rest.slash_command_builder("join", "Join in someone else's celebration!").add_option(
-            hikari.CommandOption(type=hikari.OptionType.USER, name="user", description="User", is_required=True)
-        ),
-        bot.rest.slash_command_builder("leave", "Leave someone else's channel ;("),
-    ]
-    debug_commands = [
-        bot.rest.slash_command_builder("forcejoin", 'Runs the "on_join" event'),
-        bot.rest.slash_command_builder("forceleave", 'Runs the "on_leave" event'),
-    ]
-
-    if utils.is_debug():
-        commands.extend(debug_commands)
-
-    await bot.rest.set_application_commands(application=application.id, commands=commands, guild=utils.GUILD)
-
-
-@bot.listen()
-async def handle_interactions(event: hikari.InteractionCreateEvent) -> None:
-    if not isinstance(event.interaction, hikari.CommandInteraction):
-        return
-
-    if utils.is_debug():
-        if event.interaction.command_name == "forcejoin":
-            if event.interaction.member is None or event.interaction.guild_id is None:
-                await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE, "Oops!", flags=hikari.MessageFlag.EPHEMERAL
-                )
-                return
-            await handle_join(event.interaction.member, event.interaction.guild_id)
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE, "Good!", flags=hikari.MessageFlag.EPHEMERAL
-            )
-        if event.interaction.command_name == "forceleave":
-            if event.interaction.member is None or event.interaction.guild_id is None:
-                await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE, "Oops!", flags=hikari.MessageFlag.EPHEMERAL
-                )
-                return
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE, "Good!", flags=hikari.MessageFlag.EPHEMERAL
-            )
-            await handle_leave(event.interaction.member.id, event.interaction.guild_id)
-    if event.interaction.command_name == "join":
-        if (
-            event.interaction.options is None
-            or len(event.interaction.options) < 1
-            or event.interaction.member is None
-        ):
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE, "Oops!", flags=hikari.MessageFlag.EPHEMERAL
-            )
-            return
-        userid = event.interaction.options[0].value
-        if userid != event.interaction.member.id:
-            day = SurpriseDay.get_from_discord(database, str(userid))
-            if day is None or day.channel is None:
-                await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE, "Unknown error", flags=hikari.MessageFlag.EPHEMERAL
-                )
-                return
-            channel = await bot.rest.fetch_channel(hikari.Snowflake(day.channel))
-            if channel is None or not isinstance(channel, hikari.GuildTextChannel):
-                await event.interaction.create_initial_response(
-                    hikari.ResponseType.MESSAGE_CREATE, "Oops", flags=hikari.MessageFlag.EPHEMERAL
-                )
-                return
-            await channel.edit_overwrite(
-                event.interaction.member.id,
-                target_type=hikari.PermissionOverwriteType.MEMBER,
-                allow=hikari.Permissions.VIEW_CHANNEL,
-            )
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE, "Joined!!", flags=hikari.MessageFlag.EPHEMERAL
-            )
-        else:
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE, "You can't choose yourself", flags=hikari.MessageFlag.EPHEMERAL
-            )
-    if event.interaction.command_name == "leave":
-        if event.interaction.member is None:
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE, "Oops", flags=hikari.MessageFlag.EPHEMERAL
-            )
-            return
-        day = SurpriseDay.get_from_channel(database, str(event.interaction.channel_id))
-        if day is None:
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE,
-                "You are not in a celebratory channel",
-                flags=hikari.MessageFlag.EPHEMERAL,
-            )
-            return
-        assert day.channel is not None
-        channel = await bot.rest.fetch_channel(hikari.Snowflake(day.channel))
-        if channel is None or not isinstance(channel, hikari.GuildTextChannel):
-            await event.interaction.create_initial_response(
-                hikari.ResponseType.MESSAGE_CREATE, "Oops", flags=hikari.MessageFlag.EPHEMERAL
-            )
-            return
-        await channel.remove_overwrite(event.interaction.member.id)
-        await event.interaction.create_initial_response(
-            hikari.ResponseType.MESSAGE_CREATE, "Successfully left", flags=hikari.MessageFlag.EPHEMERAL
-        )
-
 
 async def handle_join(member: hikari.Member, guild: hikari.SnowflakeishOr[hikari.PartialGuild]) -> None:
     guild = hikari.Snowflake(guild)
@@ -189,5 +77,32 @@ async def on_leave(event: hikari.MemberDeleteEvent) -> None:
     if event.old_member is not None and event.old_member.is_bot:
         return
     await handle_leave(event.user_id, event.guild_id)
+
+@bot.listen()
+async def on_start(event: hikari.StartingEvent) -> None:
+    # Start `reset` job
+    reset_surpriseday.start()
+
+# Register commands
+
+join.register_command(database, bot)
+leave.register_command(database, bot)
+
+if utils.is_debug():
+    @bot.command
+    @lightbulb.command("forcejoin", "Simulate a 'join' event")
+    @lightbulb.implements(lightbulb.SlashCommand)
+    async def forcejoin(ctx: lightbulb.Context):
+        if ctx.member is None or ctx.guild_id is None: return
+        await handle_join(ctx.member, ctx.guild_id)
+        await ctx.respond("Done!", flags=hikari.MessageFlag.EPHEMERAL)
+    
+    @bot.command
+    @lightbulb.command("forceleave", "Simulate a 'leave' event")
+    @lightbulb.implements(lightbulb.SlashCommand)
+    async def forceleave(ctx: lightbulb.Context):
+        if ctx.member is None or ctx.guild_id is None: return
+        await handle_leave(ctx.member.id, ctx.guild_id)
+        await ctx.respond("Done!", flags=hikari.MessageFlag.EPHEMERAL)
 
 bot.run()
