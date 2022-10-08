@@ -121,7 +121,7 @@ class Database:
         timestamp = int(date.timestamp())
         cur = await self.connection.cursor()
         res = await cur.execute(
-            """SELECT id, discord, message, channel, surprise_day, reset_day FROM surprise_days WHERE reset_day < ?;""",
+            """SELECT * FROM surprise_days WHERE reset_day < ?;""",
             (timestamp,),
         )
         return [SurpriseDay.from_row(tuple(row)) for row in await res.fetchall()]
