@@ -12,12 +12,16 @@ def normalize_datetime(t: datetime):
 def random_surprise_day(now):
     now = normalize_datetime(now)
 
-    next_year = now.replace(year=now.year + 1)
-    next_year = next_year - timedelta(days=1)
+    start_date = now + timedelta(days=7)
+
+    end_date = now.replace(year=now.year + 1)
+    end_date = end_date - timedelta(days=1)
 
     t = random.random()
 
-    surprise_day = normalize_datetime(datetime.fromtimestamp(now.timestamp() * t + next_year.timestamp() * (1 - t)))
+    surprise_day = normalize_datetime(
+        datetime.fromtimestamp(start_date.timestamp() * t + end_date.timestamp() * (1 - t))
+    )
     return surprise_day
 
 
@@ -34,7 +38,7 @@ class SurpriseDay:
         cur = database.cursor()
         res = cur.execute(
             "INSERT INTO surprise_days(discord, message, channel, surprise_day, reset_day) VALUES (?,?,?,?,?)",
-            [self.discord, self.message, self.channel, int(self.surprise_day.timestamp()), self.reset_day.timestamp()],
+            [self.discord, self.message, self.channel, int(self.surprise_day.timestamp()), int(self.reset_day.timestamp())],
         )
         self.id = res.lastrowid
         database.commit()
@@ -106,7 +110,7 @@ class SurpriseDay:
     def generate_surpriseday_and_resetday() -> Tuple[datetime, datetime]:
         now = normalize_datetime(datetime.now())
         surprise_day = random_surprise_day(now)
-        reset_day = now + timedelta(days=365)
+        reset_day = now.replace(year=now.year + 1)
         return (surprise_day, reset_day)
 
     @staticmethod
