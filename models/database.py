@@ -64,7 +64,6 @@ class Database:
         if self.is_closed:
             raise hikari.ComponentStateConflictError("The database connection is closed.")
 
-
         cur = await self.connection.cursor()
         res = await cur.execute(
             "INSERT INTO surprise_days(discord, message, channel, surprise_day, reset_day) VALUES (?,?,?,?,?)",
