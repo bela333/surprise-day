@@ -1,46 +1,18 @@
 from datetime import datetime
-from dotenv import load_dotenv
+from . import utils
 import hikari
-import os
 import sqlite3
 import aiocron
 
 from database.surprise_day import SurpriseDay
 
-
-load_dotenv()
-
-TOKEN = os.getenv("TOKEN")
-assert TOKEN is not None
-
-CATEGORY = os.getenv("CATEGORY")
-assert CATEGORY is not None
-CATEGORY = hikari.Snowflake(CATEGORY)
-
-GUILD = os.getenv("GUILD")
-assert GUILD is not None
-GUILD = hikari.Snowflake(GUILD)
-
-
-def is_debug() -> bool:
-    d = os.getenv("DEBUG")
-    return d == "1"
-
-
 database = sqlite3.connect("database.db")
+SurpriseDay.setup(database)
 
+bot = hikari.GatewayBot(token=utils.TOKEN, intents=hikari.Intents.GUILD_MEMBERS)
 
-def setup():
-    SurpriseDay.setup(database)
-
-
-bot = hikari.GatewayBot(token=TOKEN, intents=hikari.Intents.GUILD_MEMBERS)
-
-setup()
-
-
-#@aiocron.crontab("* * * * *", start=False)  # Every minute (for debugging)
-@aiocron.crontab("0 0 * * *", start=False) # Every day
+# Run reset job every day at midnight
+@aiocron.crontab("0 0 * * *", start=False)
 async def reset_surpriseday():
     for day in SurpriseDay.get_expired(database, datetime.now()):
         if day.channel is None:
@@ -63,6 +35,12 @@ async def reset_surpriseday():
 
 @bot.listen()
 async def register_commands(event: hikari.StartingEvent) -> None:
+
+    # Start reset job
+    reset_surpriseday.start()
+
+    # Register commands
+    # TODO: Use a command manager
     application = await bot.rest.fetch_application()
 
     commands = [
@@ -76,11 +54,10 @@ async def register_commands(event: hikari.StartingEvent) -> None:
         bot.rest.slash_command_builder("forceleave", 'Runs the "on_leave" event'),
     ]
 
-    if is_debug():
+    if utils.is_debug():
         commands.extend(debug_commands)
 
-    await bot.rest.set_application_commands(application=application.id, commands=commands, guild=GUILD)
-    reset_surpriseday.start()
+    await bot.rest.set_application_commands(application=application.id, commands=commands, guild=utils.GUILD)
 
 
 @bot.listen()
@@ -88,7 +65,7 @@ async def handle_interactions(event: hikari.InteractionCreateEvent) -> None:
     if not isinstance(event.interaction, hikari.CommandInteraction):
         return
 
-    if is_debug():
+    if utils.is_debug():
         if event.interaction.command_name == "forcejoin":
             if event.interaction.member is None or event.interaction.guild_id is None:
                 await event.interaction.create_initial_response(
@@ -178,7 +155,7 @@ async def handle_join(member: hikari.Member, guild: hikari.SnowflakeishOr[hikari
     if day.channel is not None:
         # TODO: Cleanup channel
         pass
-    channel = await bot.rest.create_guild_text_channel(guild, member.username, category=CATEGORY)
+    channel = await bot.rest.create_guild_text_channel(guild, member.username, category=utils.CATEGORY)
     
     await channel.edit_overwrite(
         guild, deny=hikari.Permissions.VIEW_CHANNEL, target_type=hikari.PermissionOverwriteType.ROLE
@@ -201,22 +178,16 @@ async def handle_leave(user_id: hikari.Snowflake, guild: hikari.SnowflakeishOr[h
     day.update_channel(database, None)
     day.update_message(database, None)
 
-
 @bot.listen()
 async def on_join(event: hikari.MemberCreateEvent) -> None:
     if event.member.is_bot:
-        # Skip bots
         return
-    # TODO: Cached value might be None
     await handle_join(event.member, event.guild_id)
-
 
 @bot.listen()
 async def on_leave(event: hikari.MemberDeleteEvent) -> None:
     if event.old_member is not None and event.old_member.is_bot:
         return
-    # TODO: Cached value might be None
     await handle_leave(event.user_id, event.guild_id)
-
 
 bot.run()
