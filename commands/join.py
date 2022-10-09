@@ -1,35 +1,48 @@
-import aiosqlite
 import hikari
 import lightbulb
 
-from database.surprise_day import SurpriseDay
+from models.bot import SurpriseBot
+
+plugin = lightbulb.Plugin(name="join")
 
 
-def register_command(database: aiosqlite.core.Connection, bot: lightbulb.BotApp):
-    @bot.command()
-    @lightbulb.option("user", "User", hikari.User)
-    @lightbulb.command("join", "Join someone else's celebration")
-    @lightbulb.implements(lightbulb.SlashCommand)
-    async def join(ctx: lightbulb.Context):
-        if ctx.member is None:
-            await ctx.respond("Oops", flags=hikari.MessageFlag.EPHEMERAL)
-            return
-        if ctx.options.user is None:
-            await ctx.respond("You need to specify a user", flags=hikari.MessageFlag.EPHEMERAL)
-            return
-        
-        user = hikari.Snowflake(ctx.options.user)
-        if user == ctx.member.id:
-            await ctx.respond("You can't join your own channel", flags=hikari.MessageFlag.EPHEMERAL)
-            return
-        
-        day = await SurpriseDay.get_from_discord(database, str(user))
-        if day is None or day.channel is None:
-            await ctx.respond("This user does not have a celebratory channel", flags=hikari.MessageFlag.EPHEMERAL)
-            return
+@plugin.command()
+@lightbulb.app_command_permissions(hikari.Permissions.NONE, dm_enabled=False)
+@lightbulb.option("user", "User", hikari.User)
+@lightbulb.command("join", "Join someone else's surprise day!", pass_options=True)
+@lightbulb.implements(lightbulb.SlashCommand)
+async def join(ctx: lightbulb.SlashContext, user: hikari.User) -> None:
+    assert ctx.member is not None
+    # This could be handled by subclassing lightbulb.Context as well, but it works for now.
+    assert isinstance(ctx.app, SurpriseBot)
 
-        await bot.rest.edit_permission_overwrite(hikari.Snowflake(day.channel), ctx.member.id, target_type=hikari.PermissionOverwriteType.MEMBER, allow=hikari.Permissions.VIEW_CHANNEL)
+    if user.id == ctx.member.id:
+        await ctx.respond("You can't join your own channel!", flags=hikari.MessageFlag.EPHEMERAL)
+        return
 
-        await ctx.respond("Joined!", flags=hikari.MessageFlag.EPHEMERAL)
+    await ctx.respond(hikari.ResponseType.DEFERRED_MESSAGE_CREATE, flags=hikari.MessageFlag.EPHEMERAL)
 
-        
+    day = await ctx.app.db.fetch_day_by_user(user)
+    if day is None or day.channel is None:
+        await ctx.respond(
+            "This user does not have a celebratory channel, or they are not a member of this server!",
+            flags=hikari.MessageFlag.EPHEMERAL,
+        )
+        return
+
+    await ctx.app.rest.edit_permission_overwrites(
+        hikari.Snowflake(day.channel),
+        ctx.member.id,
+        target_type=hikari.PermissionOverwriteType.MEMBER,
+        allow=hikari.Permissions.VIEW_CHANNEL,
+    )
+
+    await ctx.respond(f"Joined {user.mention}'s surprise channel!", flags=hikari.MessageFlag.EPHEMERAL)
+
+
+def load(bot: SurpriseBot):
+    bot.add_plugin(plugin)
+
+
+def unload(bot: SurpriseBot):
+    bot.remove_plugin(plugin)
